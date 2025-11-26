@@ -66,6 +66,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
 
         const method = methodSelect.value;
+        const initialConditions = document.getElementById('initial-conditions').value.trim();
 
         // Mostrar loading
         solveBtn.disabled = true;
@@ -83,7 +84,8 @@ document.addEventListener('DOMContentLoaded', function() {
             },
             body: JSON.stringify({
                 equation: equation,
-                method: method
+                method: method,
+                initial_conditions: initialConditions
             })
         })
         .then(response => response.json())
@@ -95,7 +97,20 @@ document.addEventListener('DOMContentLoaded', function() {
             
             if (data.success && data.solution) {
                 // Mostrar solución - usar display math
-                solutionDiv.innerHTML = `\\[${data.solution}\\]`;
+                let solutionHTML = '';
+                
+                // Si hay solución general y particular, mostrar ambas
+                if (data.general_solution && data.particular_solution && data.general_solution !== data.particular_solution) {
+                    solutionHTML += '<div style="margin-bottom: 20px;"><h4 style="color: var(--primary-color); margin-bottom: 10px;">Solución General:</h4>';
+                    solutionHTML += `<div style="background: #f0f4f8; padding: 15px; border-radius: 4px; border-left: 3px solid var(--accent-color);">\\[${data.general_solution}\\]</div></div>`;
+                    solutionHTML += '<div><h4 style="color: var(--success-color); margin-bottom: 10px;">Solución Particular (con condiciones iniciales):</h4>';
+                    solutionHTML += `<div style="background: #eafaf1; padding: 15px; border-radius: 4px; border-left: 3px solid var(--success-color);">\\[${data.particular_solution}\\]</div></div>`;
+                } else {
+                    // Mostrar solo la solución disponible
+                    solutionHTML = `\\[${data.solution}\\]`;
+                }
+                
+                solutionDiv.innerHTML = solutionHTML;
                 
                 // Mostrar pasos
                 stepsDiv.innerHTML = '';

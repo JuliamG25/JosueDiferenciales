@@ -1,6 +1,6 @@
 from flask import Flask, render_template, request, jsonify
 from sympy import symbols, Function, dsolve, Eq, simplify, latex, classify_ode, exp, log, sin, cos, tan, sqrt, atan, asin, acos, pi as sympy_pi
-from sympy import integrate, diff, Symbol, Wild, Rational, parse_expr, sympify
+from sympy import integrate, diff, Symbol, Wild, Rational, parse_expr, sympify, solve as sympy_solve, subs
 from sympy.parsing.sympy_parser import parse_expr as sympy_parse_expr, standard_transformations, implicit_multiplication_application
 import re
 
@@ -653,6 +653,252 @@ def solve_integrating_factor(eq, steps):
                 steps.append(f"📄 Traceback: {traceback.format_exc()[:200]}")
                 return None
 
+def parse_initial_conditions(conditions_str, steps):
+    """
+    Parsea condiciones iniciales desde un string.
+    Retorna una lista de tuplas (x_val, y_val, deriv_order)
+    y un diccionario de constantes {C: valor, ...}
+    """
+    if not conditions_str or not conditions_str.strip():
+        return [], {}
+    
+    x = symbols('x')
+    y_func = Function('y')
+    conditions = []
+    constant_values = {}
+    
+    # Normalizar el string
+    conditions_str = conditions_str.strip()
+    
+    # Dividir por comas
+    parts = [p.strip() for p in conditions_str.split(',')]
+    
+    for part in parts:
+        if not part:
+            continue
+        
+        try:
+            # Intentar parsear como y(a)=b o y'(a)=b, etc.
+            # Patrones: y(0)=3, y'(2)=5, y''(1)=0, C=5, etc.
+            
+            # Patrón para constantes: C=5, c=3, etc.
+            const_match = re.match(r'^([A-Za-z][A-Za-z0-9_]*)\s*=\s*(.+)$', part)
+            if const_match:
+                const_name = const_match.group(1)
+                const_value_str = const_match.group(2).strip()
+                try:
+                    # Intentar evaluar el valor
+                    local_dict = {
+                        'x': x,
+                        'exp': exp,
+                        'log': log,
+                        'sin': sin,
+                        'cos': cos,
+                        'tan': tan,
+                        'sqrt': sqrt,
+                        'pi': sympy_pi,
+                        'E': exp(1),
+                        'e': exp(1)
+                    }
+                    const_value = sympy_parse_expr(const_value_str, local_dict=local_dict, transformations=transformations)
+                    constant_values[const_name] = const_value
+                    steps.append(f"   📌 Condición detectada: ${const_name} = {latex(const_value)}$")
+                except:
+                    try:
+                        const_value = float(const_value_str)
+                        constant_values[const_name] = const_value
+                        steps.append(f"   📌 Condición detectada: ${const_name} = {const_value}$")
+                    except:
+                        steps.append(f"   ⚠️ No se pudo parsear la constante: {part}")
+                continue
+            
+            # Patrón para y(a)=b, y'(a)=b, y''(a)=b, etc.
+            # y(0)=3, y'(2)=5, y''(1)=0
+            pattern = r"y('*)\(([^)]+)\)\s*=\s*(.+)$"
+            match = re.match(pattern, part)
+            
+            if match:
+                primes = match.group(1)
+                x_val_str = match.group(2).strip()
+                y_val_str = match.group(3).strip()
+                
+                deriv_order = len(primes)
+                
+                # Parsear x_val
+                try:
+                    local_dict = {
+                        'x': x,
+                        'exp': exp,
+                        'log': log,
+                        'sin': sin,
+                        'cos': cos,
+                        'tan': tan,
+                        'sqrt': sqrt,
+                        'pi': sympy_pi,
+                        'E': exp(1),
+                        'e': exp(1)
+                    }
+                    x_val = sympy_parse_expr(x_val_str, local_dict=local_dict, transformations=transformations)
+                except:
+                    try:
+                        x_val = float(x_val_str)
+                    except:
+                        steps.append(f"   ⚠️ No se pudo parsear x en: {part}")
+                        continue
+                
+                # Parsear y_val
+                try:
+                    local_dict = {
+                        'x': x,
+                        'exp': exp,
+                        'log': log,
+                        'sin': sin,
+                        'cos': cos,
+                        'tan': tan,
+                        'sqrt': sqrt,
+                        'pi': sympy_pi,
+                        'E': exp(1),
+                        'e': exp(1)
+                    }
+                    y_val = sympy_parse_expr(y_val_str, local_dict=local_dict, transformations=transformations)
+                except:
+                    try:
+                        y_val = float(y_val_str)
+                    except:
+                        steps.append(f"   ⚠️ No se pudo parsear y en: {part}")
+                        continue
+                
+                conditions.append((x_val, y_val, deriv_order))
+                
+                deriv_str = "y" + "'" * deriv_order
+                steps.append(f"   📌 Condición inicial detectada: ${deriv_str}({latex(x_val)}) = {latex(y_val)}$")
+            else:
+                steps.append(f"   ⚠️ Formato no reconocido: {part}")
+        except Exception as e:
+            steps.append(f"   ⚠️ Error al parsear condición '{part}': {str(e)}")
+    
+    return conditions, constant_values
+
+def apply_initial_conditions(solution, conditions, constant_values, steps):
+    """
+    Aplica condiciones iniciales a la solución para encontrar constantes.
+    Retorna la solución particular.
+    """
+    if not solution:
+        return None
+    
+    x = symbols('x')
+    y_func = Function('y')
+    
+    # Si hay múltiples soluciones, trabajar con la primera (o todas si es necesario)
+    if isinstance(solution, list):
+        if len(solution) == 0:
+            return None
+        # Por ahora, trabajar con la primera solución
+        solution = solution[0]
+    
+    try:
+        # Extraer todas las constantes de la solución
+        all_constants = []
+        for symbol in solution.free_symbols:
+            s_str = str(symbol)
+            if s_str not in ['x', 'y'] and not s_str.startswith('_') and isinstance(symbol, Symbol):
+                all_constants.append(symbol)
+        
+        if not all_constants:
+            steps.append(f"   ℹ️ La solución no contiene constantes de integración.")
+            return solution
+        
+        # Si hay valores de constantes directos, aplicarlos primero
+        if constant_values:
+            steps.append(f"")
+            steps.append(f"🔧 **Aplicando valores de constantes:**")
+            for const_name, const_value in constant_values.items():
+                # Buscar el símbolo correspondiente
+                const_symbol = None
+                for c in all_constants:
+                    if str(c) == const_name:
+                        const_symbol = c
+                        break
+                
+                if const_symbol:
+                    solution = solution.subs(const_symbol, const_value)
+                    steps.append(f"   Sustituyendo ${latex(const_symbol)} = {latex(const_value)}$")
+                    steps.append(f"   Solución actualizada: $$latex({latex(solution)})$$")
+                    # Remover de la lista de constantes
+                    all_constants = [c for c in all_constants if c != const_symbol]
+                else:
+                    steps.append(f"   ⚠️ No se encontró la constante ${const_name}$ en la solución")
+        
+        # Si no hay condiciones iniciales, retornar la solución general
+        if not conditions:
+            return solution
+        
+        steps.append(f"")
+        steps.append(f"🔧 **Aplicando condiciones iniciales para encontrar constantes:**")
+        
+        # Crear sistema de ecuaciones a partir de las condiciones
+        equations = []
+        
+        for x_val, y_val, deriv_order in conditions:
+            # Calcular la derivada correspondiente
+            if deriv_order == 0:
+                # y(x_val) = y_val
+                expr = solution.subs(x, x_val) - y_val
+            else:
+                # Calcular la derivada n-ésima
+                deriv_expr = diff(solution, x, deriv_order)
+                expr = deriv_expr.subs(x, x_val) - y_val
+            
+            equations.append(Eq(expr, 0))
+            
+            deriv_str = "y" + "'" * deriv_order
+            steps.append(f"   Condición: ${deriv_str}({latex(x_val)}) = {latex(y_val)}$")
+            steps.append(f"   Ecuación resultante: $$latex({latex(equations[-1])})$$")
+        
+        # Resolver el sistema de ecuaciones
+        if equations and all_constants:
+            steps.append(f"")
+            steps.append(f"🔍 **Resolviendo el sistema de ecuaciones para las constantes:**")
+            
+            try:
+                # Intentar resolver el sistema
+                solutions_dict = sympy_solve(equations, all_constants, dict=True)
+                
+                if solutions_dict:
+                    # Tomar la primera solución (puede haber múltiples)
+                    sol_dict = solutions_dict[0]
+                    
+                    steps.append(f"   Soluciones encontradas para las constantes:")
+                    for const, value in sol_dict.items():
+                        steps.append(f"   ${latex(const)} = {latex(value)}$")
+                    
+                    # Aplicar las constantes a la solución
+                    particular_solution = solution.subs(sol_dict)
+                    particular_solution = simplify(particular_solution)
+                    
+                    steps.append(f"")
+                    steps.append(f"✅ **Solución particular obtenida:**")
+                    steps.append(f"   $$latex({latex(particular_solution)})$$")
+                    
+                    return particular_solution
+                else:
+                    steps.append(f"   ⚠️ No se encontró solución para el sistema de ecuaciones")
+                    steps.append(f"   Se mostrará la solución general con las constantes sin determinar")
+                    return solution
+            except Exception as solve_error:
+                steps.append(f"   ⚠️ Error al resolver el sistema: {str(solve_error)}")
+                steps.append(f"   Se mostrará la solución general")
+                return solution
+        else:
+            return solution
+            
+    except Exception as e:
+        steps.append(f"   ⚠️ Error al aplicar condiciones iniciales: {str(e)}")
+        import traceback
+        steps.append(f"   📄 Detalles: {traceback.format_exc()[:200]}")
+        return solution
+
 @app.route('/')
 def index():
     return render_template('index.html')
@@ -671,9 +917,12 @@ def solve():
         
         equation_str = data.get('equation', '')
         method = data.get('method', 'auto')
+        initial_conditions_str = data.get('initial_conditions', '')
         
         steps = []
         solution = None
+        general_solution = None
+        particular_solution = None
     except Exception as e:
         return jsonify({
             'success': False,
@@ -914,12 +1163,16 @@ def solve():
                     solution = None
         
         if solution is not None:
+            # Guardar solución general
+            general_solution = solution
+            
             # Normalizar y simplificar la solución (puede ser lista o expresión única)
             steps.append(f"")
-            steps.append(f"🔧 **Paso 4: Simplificación de la solución**")
+            steps.append(f"🔧 **Paso 4: Simplificación de la solución general**")
             try:
                 original_solution = solution
                 solution = normalize_and_simplify_solution(solution)
+                general_solution = solution
                 
                 # Si cambió, agregar paso de simplificación
                 # Comparar usando representación en string para evitar problemas con listas
@@ -942,7 +1195,7 @@ def solve():
                             steps.append(f"   $$latex({latex(solution)})$$")
                 except:
                     # Si la comparación falla, mostrar la solución actual
-                    steps.append(f"   Solución final:")
+                    steps.append(f"   Solución general:")
                     if isinstance(solution, list):
                         for i, sol in enumerate(solution, 1):
                             steps.append(f"   Solución {i}: $$latex({latex(sol)})$$")
@@ -952,6 +1205,24 @@ def solve():
                 steps.append(f"⚠️ Advertencia: Error al simplificar solución: {str(simplify_error)}")
                 steps.append(f"   Se mostrará la solución sin simplificar.")
                 # Continuar con la solución original
+            
+            # Procesar condiciones iniciales si se proporcionaron
+            if initial_conditions_str:
+                steps.append(f"")
+                steps.append(f"📋 **Paso 5: Procesando condiciones iniciales**")
+                steps.append(f"   Condiciones ingresadas: `{initial_conditions_str}`")
+                
+                conditions, constant_values = parse_initial_conditions(initial_conditions_str, steps)
+                
+                if conditions or constant_values:
+                    # Aplicar condiciones iniciales
+                    particular_solution = apply_initial_conditions(general_solution, conditions, constant_values, steps)
+                    
+                    if particular_solution and particular_solution != general_solution:
+                        solution = particular_solution  # Usar solución particular para mostrar
+                else:
+                    steps.append(f"   ⚠️ No se detectaron condiciones iniciales válidas.")
+                    steps.append(f"   Se mostrará únicamente la solución general.")
         else:
             # Si no hay solución, agregar mensaje informativo
             if not any("❌" in step for step in steps):
@@ -964,56 +1235,96 @@ def solve():
     
     # Convertir solución a LaTeX, manejando listas
     solution_latex = None
+    general_solution_latex = None
+    particular_solution_latex = None
+    
     try:
         if solution is not None:
-            if isinstance(solution, list):
+            # Mostrar solución particular si existe, sino la general
+            display_solution = particular_solution if (particular_solution and particular_solution != general_solution) else solution
+            
+            if isinstance(display_solution, list):
                 # Si hay múltiples soluciones, formatearlas juntas
-                solution_latex = '\\begin{cases} ' + ' \\\\ '.join([latex(sol) for sol in solution]) + ' \\end{cases}'
+                solution_latex = '\\begin{cases} ' + ' \\\\ '.join([latex(sol) for sol in display_solution]) + ' \\end{cases}'
             else:
-                solution_latex = latex(solution)
+                solution_latex = latex(display_solution)
             
-            # Agregar información sobre constantes de integración
+            # También preparar LaTeX para solución general y particular si existen
+            if general_solution:
+                if isinstance(general_solution, list):
+                    general_solution_latex = '\\begin{cases} ' + ' \\\\ '.join([latex(sol) for sol in general_solution]) + ' \\end{cases}'
+                else:
+                    general_solution_latex = latex(general_solution)
+            
+            if particular_solution and particular_solution != general_solution:
+                if isinstance(particular_solution, list):
+                    particular_solution_latex = '\\begin{cases} ' + ' \\\\ '.join([latex(sol) for sol in particular_solution]) + ' \\end{cases}'
+                else:
+                    particular_solution_latex = latex(particular_solution)
+            
+            # Agregar información sobre constantes de integración y resumen
             steps.append(f"")
-            steps.append(f"📌 **Paso 5: Información adicional**")
+            steps.append(f"📌 **Paso 6: Resumen final**")
             
-            # Detectar constantes de integración
-            from sympy import Symbol as SympySymbol, Wild
-            constants = []
-            if isinstance(solution, list):
-                for sol in solution:
-                    # Buscar todos los símbolos que no sean x ni y
-                    for s in sol.free_symbols:
+            # Mostrar solución general si hay solución particular
+            if particular_solution and particular_solution != general_solution:
+                steps.append(f"")
+                steps.append(f"📊 **Solución General:**")
+                if isinstance(general_solution, list):
+                    for i, sol in enumerate(general_solution, 1):
+                        steps.append(f"   Solución {i}: $$latex({latex(sol)})$$")
+                else:
+                    steps.append(f"   $$latex({latex(general_solution)})$$")
+                
+                steps.append(f"")
+                steps.append(f"📊 **Solución Particular (con condiciones iniciales aplicadas):**")
+                if isinstance(particular_solution, list):
+                    for i, sol in enumerate(particular_solution, 1):
+                        steps.append(f"   Solución {i}: $$latex({latex(sol)})$$")
+                else:
+                    steps.append(f"   $$latex({latex(particular_solution)})$$")
+            else:
+                # Detectar constantes de integración en la solución general
+                from sympy import Symbol as SympySymbol, Wild
+                constants = []
+                sol_to_check = general_solution if general_solution else solution
+                if isinstance(sol_to_check, list):
+                    for sol in sol_to_check:
+                        # Buscar todos los símbolos que no sean x ni y
+                        for s in sol.free_symbols:
+                            s_str = str(s)
+                            if s_str not in ['x', 'y'] and not s_str.startswith('_') and isinstance(s, SympySymbol):
+                                # Filtrar símbolos que parecen constantes de integración
+                                if any(s_str.startswith(prefix) for prefix in ['C', 'c', 'K', 'k', 'A', 'a', 'B', 'b']):
+                                    constants.append(s_str)
+                else:
+                    for s in sol_to_check.free_symbols:
                         s_str = str(s)
                         if s_str not in ['x', 'y'] and not s_str.startswith('_') and isinstance(s, SympySymbol):
-                            # Filtrar símbolos que parecen constantes de integración
                             if any(s_str.startswith(prefix) for prefix in ['C', 'c', 'K', 'k', 'A', 'a', 'B', 'b']):
                                 constants.append(s_str)
-            else:
-                for s in solution.free_symbols:
-                    s_str = str(s)
-                    if s_str not in ['x', 'y'] and not s_str.startswith('_') and isinstance(s, SympySymbol):
-                        if any(s_str.startswith(prefix) for prefix in ['C', 'c', 'K', 'k', 'A', 'a', 'B', 'b']):
-                            constants.append(s_str)
-            
-            if constants:
-                unique_constants = sorted(set(constants))
-                if len(unique_constants) == 1:
-                    steps.append(f"   La solución contiene la constante de integración: ${unique_constants[0]}$")
-                    steps.append(f"   Esta constante puede tomar cualquier valor real.")
-                else:
-                    steps.append(f"   La solución contiene las siguientes constantes de integración: {', '.join([f'${c}$' for c in unique_constants])}")
-                    steps.append(f"   Estas constantes pueden tomar cualquier valor real.")
-            else:
-                # Intentar detectar si hay símbolos que puedan ser constantes
-                all_symbols = set()
-                if isinstance(solution, list):
-                    for sol in solution:
-                        all_symbols.update([str(s) for s in sol.free_symbols if str(s) not in ['x', 'y']])
-                else:
-                    all_symbols = set([str(s) for s in solution.free_symbols if str(s) not in ['x', 'y']])
                 
-                if all_symbols:
-                    steps.append(f"   Nota: La solución puede depender de valores iniciales o condiciones de contorno.")
+                if constants:
+                    unique_constants = sorted(set(constants))
+                    if len(unique_constants) == 1:
+                        steps.append(f"   La solución contiene la constante de integración: ${unique_constants[0]}$")
+                        steps.append(f"   Esta constante puede tomar cualquier valor real.")
+                        steps.append(f"   Para obtener una solución particular, proporcione una condición inicial (ej: y(0)=3).")
+                    else:
+                        steps.append(f"   La solución contiene las siguientes constantes de integración: {', '.join([f'${c}$' for c in unique_constants])}")
+                        steps.append(f"   Estas constantes pueden tomar cualquier valor real.")
+                        steps.append(f"   Para obtener una solución particular, proporcione condiciones iniciales (ej: y(0)=3, y'(0)=1).")
+                else:
+                    # Intentar detectar si hay símbolos que puedan ser constantes
+                    all_symbols = set()
+                    if isinstance(sol_to_check, list):
+                        for sol in sol_to_check:
+                            all_symbols.update([str(s) for s in sol.free_symbols if str(s) not in ['x', 'y']])
+                    else:
+                        all_symbols = set([str(s) for s in sol_to_check.free_symbols if str(s) not in ['x', 'y']])
+                    
+                    if all_symbols:
+                        steps.append(f"   Nota: La solución puede depender de valores iniciales o condiciones de contorno.")
             
             steps.append(f"")
             steps.append(f"✅ **Resumen:** La ecuación diferencial ha sido resuelta exitosamente.")
@@ -1029,6 +1340,8 @@ def solve():
     return jsonify({
         'success': solution is not None,
         'solution': solution_latex,
+        'general_solution': general_solution_latex,
+        'particular_solution': particular_solution_latex,
         'steps': steps
     })
 

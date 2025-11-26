@@ -156,6 +156,34 @@ header h1 {
     font-family: 'Courier New', monospace;
 }
 
+.initial-conditions {
+    margin-bottom: 25px;
+}
+
+.initial-conditions label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.initial-conditions input {
+    width: 100%;
+    padding: 12px 16px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    font-size: 1em;
+    transition: border-color 0.2s ease;
+    font-family: 'Courier New', monospace;
+    background: #fff;
+}
+
+.initial-conditions input:focus {
+    outline: none;
+    border-color: var(--accent-color);
+    box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.1);
+}
+
 .method-selector {
     margin-bottom: 25px;
 }

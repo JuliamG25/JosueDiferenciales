@@ -50,6 +50,20 @@
                     </select>
                 </div>
 
+                <div class="initial-conditions">
+                    <label for="initial-conditions">Condiciones Iniciales (opcional):</label>
+                    <input type="text" id="initial-conditions" placeholder="Ejemplo: y(0)=3, y(2)=5, y'(0)=1" />
+                    <div class="input-help">
+                        <p><strong>Formatos soportados:</strong></p>
+                        <ul>
+                            <li><code>y(0)=3</code> - Condición inicial simple</li>
+                            <li><code>y(2)=5</code> - Valor en x=2</li>
+                            <li><code>y(0)=3, y'(0)=1</code> - Múltiples condiciones</li>
+                            <li><code>C=5</code> - Valor específico de constante</li>
+                        </ul>
+                    </div>
+                </div>
+
                 <button id="solve-btn" class="solve-button">Resolver Ecuación</button>
                     </div>
 
