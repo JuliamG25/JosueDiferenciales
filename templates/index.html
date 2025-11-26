@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Solucionador de Ecuaciones Diferenciales</title>
+    <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🔬 Solucionador de Ecuaciones Diferenciales</h1>
+            <p class="subtitle">Resuelve ecuaciones diferenciales paso a paso</p>
+        </header>
+
+        <div class="main-content">
+            <div class="content-wrapper">
+                <div class="left-column">
+                    <div class="input-section">
+                <h2>Ingresa tu Ecuación Diferencial</h2>
+                
+                <div class="equation-input">
+                    <label for="equation">Ecuación:</label>
+                    <input type="text" id="equation" placeholder="Ejemplo: y' = x*y o dy/dx = x*y" />
+                    <div class="input-help">
+                        <p><strong>Formatos soportados:</strong></p>
+                        <ul>
+                            <li><code>y' = x*y</code> - Primera derivada</li>
+                            <li><code>dy/dx = x*y</code> - Notación de Leibniz</li>
+                            <li><code>y'' + 2*y' + y = 0</code> - Ecuación de segundo orden</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="method-selector">
+                    <label for="method">Método de Solución:</label>
+                    <select id="method">
+                        <option value="auto">Auto-detectado</option>
+                        <option value="separable">Variables Separables</option>
+                        <option value="homogeneous">Ecuaciones Homogéneas</option>
+                        <option value="exact">Ecuaciones Exactas</option>
+                        <option value="linear">Ecuaciones Lineales</option>
+                        <option value="bernoulli">Ecuación de Bernoulli</option>
+                        <option value="reducible">Reducibles a Primer Orden</option>
+                        <option value="constant_coeff">Coeficientes Constantes</option>
+                        <option value="undetermined">Coeficientes Indeterminados</option>
+                        <option value="integrating_factor">Factor Integrante</option>
+                    </select>
+                </div>
+
+                <button id="solve-btn" class="solve-button">Resolver Ecuación</button>
+                    </div>
+
+                    <div class="result-section" id="result-section" style="display: none;">
+                <h2>Solución</h2>
+                <div id="solution" class="solution-box"></div>
+                
+                <h3>Paso a Paso</h3>
+                <div id="steps" class="steps-container"></div>
+            </div>
+
+                    <div class="examples-section">
+                        <h2>Ejemplos</h2>
+                        <div class="examples-grid">
+                            <div class="example-card" data-equation="y' = x*y" data-method="separable">
+                                <h4>Variables Separables</h4>
+                                <code>y' = x*y</code>
+                                <p>dy/dx = x·y</p>
+                            </div>
+                            <div class="example-card" data-equation="y' = (x**2 + y**2)/(x*y)" data-method="homogeneous">
+                                <h4>Homogénea</h4>
+                                <code>y' = (x²+y²)/(x·y)</code>
+                                <p>Ecuación homogénea</p>
+                            </div>
+                            <div class="example-card" data-equation="y' + y/x = x**2" data-method="linear">
+                                <h4>Lineal</h4>
+                                <code>y' + y/x = x²</code>
+                                <p>Ecuación diferencial lineal</p>
+                            </div>
+                            <div class="example-card" data-equation="y' = y*(1-y)" data-method="bernoulli">
+                                <h4>Bernoulli</h4>
+                                <code>y' = y·(1-y)</code>
+                                <p>Ecuación de Bernoulli</p>
+                            </div>
+                            <div class="example-card" data-equation="y'' + 3*y' + 2*y = 0" data-method="constant_coeff">
+                                <h4>Coeficientes Constantes</h4>
+                                <code>y'' + 3y' + 2y = 0</code>
+                                <p>Orden superior</p>
+                            </div>
+                            <div class="example-card" data-equation="y' = exp(x)*y" data-method="linear">
+                                <h4>Con Exponencial</h4>
+                                <code>y' = exp(x)·y</code>
+                                <p>Factor integrante</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="right-column">
+                    <div class="format-guide">
+                        <h2>📋 Guía de Formato</h2>
+                        <p class="guide-intro">Cómo escribir correctamente las ecuaciones:</p>
+                        <table class="format-table">
+                            <thead>
+                                <tr>
+                                    <th>Elemento</th>
+                                    <th>Formato Correcto</th>
+                                    <th>Ejemplo</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td><strong>Primera derivada</strong></td>
+                                    <td><code>y'</code> o <code>dy/dx</code></td>
+                                    <td><code>y' = x*y</code></td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Segunda derivada</strong></td>
+                                    <td><code>y''</code> o <code>d^2y/dx^2</code></td>
+                                    <td><code>y'' + y = 0</code></td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Multiplicación</strong></td>
+                                    <td><code>*</code> o implícita</td>
+                                    <td><code>y' = 3*x*y</code> o <code>y' = 3xy</code></td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Potencias</strong></td>
+                                    <td><code>**</code> o <code>^</code></td>
+                                    <td><code>x**2</code> o <code>x^2</code> o <code>x²</code></td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Fracciones</strong></td>
+                                    <td><code>/</code></td>
+                                    <td><code>y' = (x+y)/x</code></td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Exponencial</strong></td>
+                                    <td><code>exp(x)</code> o <code>e**x</code></td>
+                                    <td><code>y' = exp(x)*y</code></td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Logaritmo</strong></td>
+                                    <td><code>log(x)</code> o <code>ln(x)</code></td>
+                                    <td><code>y' = log(x)</code></td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Trigonométricas</strong></td>
+                                    <td><code>sin(x)</code>, <code>cos(x)</code>, etc.</td>
+                                    <td><code>y' = sin(x)*y</code></td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Paréntesis</strong></td>
+                                    <td><code>( )</code> para agrupar</td>
+                                    <td><code>y' = (x+2)*y</code></td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Espacios</strong></td>
+                                    <td>Opcionales, se ignoran</td>
+                                    <td><code>y' = x * y</code></td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Números decimales</strong></td>
+                                    <td><code>.</code> (punto)</td>
+                                    <td><code>y' = 2.5*x</code></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                        <div class="format-note">
+                            <h3>💡 Notas importantes:</h3>
+                            <ul>
+                                <li>Usa <code>*</code> para multiplicación explícita: <code>3*x</code> o <code>3x</code></li>
+                                <li>Las potencias pueden escribirse como <code>x^2</code> o <code>x**2</code> o <code>x²</code></li>
+                                <li>El signo de igualdad <code>=</code> separa los lados de la ecuación</li>
+                                <li>Los paréntesis ayudan a agrupar operaciones: <code>(x+y)/x</code></li>
+                                <li>Se aceptan caracteres Unicode como <code>²</code>, <code>³</code>, <code>−</code></li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <footer>
+            <p>Solucionador de Ecuaciones Diferenciales - Desarrollado con Flask y SymPy</p>
+        </footer>
+    </div>
+
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
+
